@@ -13,5 +13,19 @@
     "enabled": true,
     "source": "nightmare_schedule",
     "url": "https://nightmare-web.com/schedule/list/"
+  },
+  {
+    "id": "kizu",
+    "name": "キズ",
+    "enabled": true,
+    "source": "kizu_schedule",
+    "url": "https://www.ki-zu.com/schedule/"
+  },
+  {
+    "id": "poraliscope",
+    "name": "The Poraliscope",
+    "enabled": true,
+    "source": "poraliscope_news",
+    "url": "https://poraliscope.bitfan.id/contents/menu/76258"
   }
 ]
