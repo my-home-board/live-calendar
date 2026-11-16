@@ -8,36 +8,46 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Check DNS and HTTP
+      - name: Check alternative sources
         run: |
           python - <<'PY'
-          import socket
+          import subprocess
           import requests
 
+          print("=== Kizu DNS ===", flush=True)
+          for server in ["1.1.1.1", "8.8.8.8"]:
+              result = subprocess.run(
+                  ["dig", "+time=3", "+tries=1",
+                   f"@{server}", "ki-zu.com", "A"],
+                  capture_output=True,
+                  text=True,
+              )
+              print(f"\nDNS server: {server}", flush=True)
+              print(result.stdout[-1500:], flush=True)
+              print(result.stderr[-500:], flush=True)
+
           sites = {
-              "Kizu": "https://ki-zu.com/schedule/",
-              "The Poraliscope": "https://poraliscope.bitfan.id/schedules/menu/76259",
-              "GitHub": "https://github.com",
+              "Kizu WWW": "https://www.ki-zu.com/schedule/",
+              "Poraliscope NEWS":
+                  "https://poraliscope.bitfan.id/contents/menu/76258",
+              "Poraliscope HOME":
+                  "https://poraliscope.bitfan.id/",
           }
 
           for name, url in sites.items():
-              host = requests.utils.urlparse(url).hostname
-              print(f"\n=== {name}: {host} ===", flush=True)
-
+              print(f"\n=== {name} ===", flush=True)
               try:
-                  addresses = sorted({
-                      item[4][0]
-                      for item in socket.getaddrinfo(host, 443)
-                  })
-                  print("DNS OK:", addresses, flush=True)
-              except Exception as e:
-                  print("DNS ERROR:", repr(e), flush=True)
-                  continue
-
-              try:
-                  response = requests.get(url, timeout=15)
-                  print("HTTP:", response.status_code, flush=True)
-                  print("Final URL:", response.url, flush=True)
-              except Exception as e:
-                  print("HTTP ERROR:", repr(e), flush=True)
+                  response = requests.get(
+                      url,
+                      timeout=20,
+                      headers={
+                          "User-Agent": "Mozilla/5.0",
+                          "Accept": "text/html",
+                      },
+                  )
+                  print("HTTP:", response.status_code)
+                  print("Final URL:", response.url)
+                  print("HTML length:", len(response.content))
+              except Exception as error:
+                  print("ERROR:", repr(error))
           PY
