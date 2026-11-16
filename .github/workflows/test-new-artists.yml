@@ -8,46 +8,60 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Check alternative sources
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Test extraction
         run: |
           python - <<'PY'
-          import subprocess
           import requests
+          from bs4 import BeautifulSoup
+          from urllib.parse import urljoin
+          from kizu import fetch_kizu
 
-          print("=== Kizu DNS ===", flush=True)
-          for server in ["1.1.1.1", "8.8.8.8"]:
-              result = subprocess.run(
-                  ["dig", "+time=3", "+tries=1",
-                   f"@{server}", "ki-zu.com", "A"],
-                  capture_output=True,
-                  text=True,
+          print("=== Kizu events ===", flush=True)
+          try:
+              events = fetch_kizu({
+                  "id": "kizu",
+                  "name": "キズ",
+                  "url": "https://www.ki-zu.com/schedule/",
+              })
+              print("Count:", len(events), flush=True)
+              for e in events[:20]:
+                  print(e["start"], e["title"], e["location"])
+          except Exception as error:
+              print("ERROR:", repr(error), flush=True)
+
+          print("\n=== Poraliscope NEWS links ===", flush=True)
+          url = "https://poraliscope.bitfan.id/contents/menu/76258"
+          try:
+              response = requests.get(
+                  url,
+                  timeout=25,
+                  headers={"User-Agent": "Mozilla/5.0"},
               )
-              print(f"\nDNS server: {server}", flush=True)
-              print(result.stdout[-1500:], flush=True)
-              print(result.stderr[-500:], flush=True)
+              print("HTTP:", response.status_code, flush=True)
+              response.raise_for_status()
 
-          sites = {
-              "Kizu WWW": "https://www.ki-zu.com/schedule/",
-              "Poraliscope NEWS":
-                  "https://poraliscope.bitfan.id/contents/menu/76258",
-              "Poraliscope HOME":
-                  "https://poraliscope.bitfan.id/",
-          }
+              soup = BeautifulSoup(response.text, "html.parser")
+              links = {}
+              for a in soup.select('a[href*="/contents/"]'):
+                  href = urljoin(url, a.get("href", ""))
+                  title = a.get_text(" ", strip=True)
+                  if title and href not in links:
+                      links[href] = title
 
-          for name, url in sites.items():
-              print(f"\n=== {name} ===", flush=True)
-              try:
-                  response = requests.get(
-                      url,
-                      timeout=20,
-                      headers={
-                          "User-Agent": "Mozilla/5.0",
-                          "Accept": "text/html",
-                      },
-                  )
-                  print("HTTP:", response.status_code)
-                  print("Final URL:", response.url)
-                  print("HTML length:", len(response.content))
-              except Exception as error:
-                  print("ERROR:", repr(error))
+              print("Link count:", len(links), flush=True)
+              for href, title in list(links.items())[:30]:
+                  print(title[:100], href, flush=True)
+          except Exception as error:
+              print("ERROR:", repr(error), flush=True)
           PY
