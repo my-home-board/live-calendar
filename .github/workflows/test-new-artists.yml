@@ -19,59 +19,59 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Inspect Poraliscope live details
+      - name: Test both artists
         run: |
           python - <<'PY'
-          import re
-          import requests
-          from bs4 import BeautifulSoup
+          from kizu import fetch_kizu
+          from poraliscope import fetch_poraliscope
 
-          urls = [
-              "https://poraliscope.bitfan.id/contents/450192",
-              "https://poraliscope.bitfan.id/contents/457451",
-              "https://poraliscope.bitfan.id/contents/465304",
-              "https://poraliscope.bitfan.id/contents/467393",
+          artists = [
+              (
+                  "キズ",
+                  fetch_kizu,
+                  {
+                      "id": "kizu",
+                      "name": "キズ",
+                      "url": "https://www.ki-zu.com/schedule/",
+                  },
+              ),
+              (
+                  "The Poraliscope",
+                  fetch_poraliscope,
+                  {
+                      "id": "poraliscope",
+                      "name": "The Poraliscope",
+                      "url": "https://poraliscope.bitfan.id/contents/menu/76258",
+                  },
+              ),
           ]
 
-          session = requests.Session()
-          session.headers.update({
-              "User-Agent": "Mozilla/5.0",
-              "Accept": "text/html",
-          })
+          failed = False
 
-          for url in urls:
-              print(f"\n=== {url} ===", flush=True)
+          for name, fetch, artist in artists:
+              print(f"\n=== {name} ===", flush=True)
+
               try:
-                  response = session.get(url, timeout=25)
-                  print("HTTP:", response.status_code)
-                  response.raise_for_status()
+                  events = fetch(artist)
+                  print(f"取得件数: {len(events)}", flush=True)
 
-                  soup = BeautifulSoup(
-                      response.text, "html.parser"
-                  )
-                  for tag in soup(["script", "style", "nav", "footer"]):
-                      tag.decompose()
+                  if not events:
+                      print("ERROR: 取得件数が0件です")
+                      failed = True
 
-                  lines = [
-                      re.sub(r"\s+", " ", line).strip()
-                      for line in soup.get_text("\n").splitlines()
-                  ]
-                  lines = [line for line in lines if line]
+                  for event in events:
+                      print(
+                          event["start"],
+                          event["title"],
+                          "|",
+                          event["location"],
+                          flush=True,
+                      )
 
-                  keywords = (
-                      "2026", "2027", "OPEN", "START",
-                      "開場", "開演", "会場", "出演",
-                      "FOWS", "ReG", "LIVEHOLIC",
-                  )
-
-                  for index, line in enumerate(lines):
-                      if any(word in line for word in keywords):
-                          print(
-                              " | ".join(
-                                  lines[max(0, index-1):index+3]
-                              )[:400],
-                              flush=True,
-                          )
               except Exception as error:
                   print("ERROR:", repr(error), flush=True)
+                  failed = True
+
+          if failed:
+              raise SystemExit(1)
           PY
