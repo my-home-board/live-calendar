@@ -146,6 +146,20 @@ def fetch_poraliscope(artist):
 
         event_name = event_name or title_text or listing_title
 
+        if event_name in ("ログイン", "フォロー", "NEWS"):
+            event_name = ""
+
+        if not event_name:
+            for line in lines:
+                if "CLEAR FES 2026" in line:
+                    event_name = "CLEAR FES 2026"
+                    break
+                if "SOULBEAT" in line:
+                    event_name = "SOULBEAT"
+                    break
+
+        event_name = event_name or title_text or listing_title
+
         if EXCLUDE.search(event_name):
             continue
 
