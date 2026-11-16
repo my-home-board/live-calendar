@@ -8,42 +8,36 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Test Kizu and The Poraliscope
+      - name: Check DNS and HTTP
         run: |
           python - <<'PY'
-          from kizu import fetch_kizu
-          from poraliscope import fetch_poraliscope
+          import socket
+          import requests
 
-          artists = [
-              {
-                  "id": "kizu",
-                  "name": "キズ",
-                  "url": "https://ki-zu.com/schedule/",
-                  "fetch": fetch_kizu,
-              },
-              {
-                  "id": "poraliscope",
-                  "name": "The Poraliscope",
-                  "url": "https://poraliscope.bitfan.id/schedules/menu/76259",
-                  "fetch": fetch_poraliscope,
-              },
-          ]
+          sites = {
+              "Kizu": "https://ki-zu.com/schedule/",
+              "The Poraliscope": "https://poraliscope.bitfan.id/schedules/menu/76259",
+              "GitHub": "https://github.com",
+          }
 
-          for artist in artists:
-              print(f'\n=== {artist["name"]} ===')
-              events = artist["fetch"](artist)
-              print(f'取得件数: {len(events)}')
-              for event in events:
-                  print(event["start"], event["title"], event["location"])
+          for name, url in sites.items():
+              host = requests.utils.urlparse(url).hostname
+              print(f"\n=== {name}: {host} ===", flush=True)
+
+              try:
+                  addresses = sorted({
+                      item[4][0]
+                      for item in socket.getaddrinfo(host, 443)
+                  })
+                  print("DNS OK:", addresses, flush=True)
+              except Exception as e:
+                  print("DNS ERROR:", repr(e), flush=True)
+                  continue
+
+              try:
+                  response = requests.get(url, timeout=15)
+                  print("HTTP:", response.status_code, flush=True)
+                  print("Final URL:", response.url, flush=True)
+              except Exception as e:
+                  print("HTTP ERROR:", repr(e), flush=True)
           PY
