@@ -1,0 +1,52 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Personal Live Calendar//JP
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:キズ
+X-WR-TIMEZONE:Asia/Tokyo
+BEGIN:VEVENT
+UID:kizu-c23f8e4f59e78ace72f0@live-calendar
+DTSTAMP:20261116T073530Z
+DTSTART;TZID=Asia/Tokyo:20261217T170000
+DTEND;TZID=Asia/Tokyo:20261217T200000
+SUMMARY:【キズ】BLOG MAGAZINE 限定 キズ単独裏公演 『師走』
+LOCATION:KANDA SQUARE HALL
+DESCRIPTION:公式情報: https://www.ki-zu.com/schedule/\n開場/開演: 1
+ 7:00 / 18:00 [出演]\n終了時刻は未発表の場合仮設定
+URL:https://www.ki-zu.com/schedule/
+END:VEVENT
+BEGIN:VEVENT
+UID:kizu-0b60554759247d735a75@live-calendar
+DTSTAMP:20261116T073530Z
+DTSTART;TZID=Asia/Tokyo:20270111T173000
+DTEND;TZID=Asia/Tokyo:20270111T203000
+SUMMARY:【キズ】キズ 男限定GIG『漢地獄』
+LOCATION:SHIBUYA REX
+DESCRIPTION:公式情報: https://www.ki-zu.com/schedule/\n開場/開演: 1
+ 7:30 / 18:00 [出演]\n終了時刻は未発表の場合仮設定
+URL:https://www.ki-zu.com/schedule/
+END:VEVENT
+BEGIN:VEVENT
+UID:kizu-411ce9f331d30495bb2b@live-calendar
+DTSTAMP:20261116T073530Z
+DTSTART;TZID=Asia/Tokyo:20270123T160000
+DTEND;TZID=Asia/Tokyo:20270123T190000
+SUMMARY:【キズ】BLOG MAGAZINE 限定 キズ単独裏公演 『睦月』
+LOCATION:WWW X
+DESCRIPTION:公式情報: https://www.ki-zu.com/schedule/\n開場/開演: 1
+ 6:00 / 17:00 [出演]\n終了時刻は未発表の場合仮設定
+URL:https://www.ki-zu.com/schedule/
+END:VEVENT
+BEGIN:VEVENT
+UID:kizu-b21a20b1426893392b9b@live-calendar
+DTSTAMP:20261116T073530Z
+DTSTART;TZID=Asia/Tokyo:20270227T160000
+DTEND;TZID=Asia/Tokyo:20270227T190000
+SUMMARY:【キズ】キズ 単独公演『武道館』
+LOCATION:日本武道館
+DESCRIPTION:公式情報: https://www.ki-zu.com/schedule/\n開場/開演: 1
+ 6:00 / 17:00 [チケット]\n終了時刻は未発表の場合仮設定
+URL:https://www.ki-zu.com/schedule/
+END:VEVENT
+END:VCALENDAR
