@@ -1,5 +1,6 @@
 
-"""The Poraliscope公式NEWSの「ライブ」カテゴリから公演を取得。"""
+"""The Poraliscope公式NEWSからライブ公演を取得。"""
+
 import re
 from datetime import date, datetime, timedelta
 from urllib.parse import urljoin
@@ -14,47 +15,138 @@ NEWS_URL = "https://poraliscope.bitfan.id/contents/menu/76258"
 DATE = re.compile(
     r"(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日"
 )
-EXCLUDE = re.compile(
-    r"トーク|配信|生放送|YouTube|インストア|特典会|"
-    r"サイン会|握手会|撮影会|リリースイベント|ラジオ",
-    re.I,
-)
-BAND = re.compile(r"The\s*Poraliscope|ポラリスコープ", re.I)
 TIME = re.compile(
-    r"(?:START|開演)\s*[:：]?\s*([01]?\d|2[0-3]):([0-5]\d)",
+    r"(?:START|開演)\s*[:：]?\s*"
+    r"([01]?\d|2[0-3]):([0-5]\d)",
     re.I,
 )
-VENUE = re.compile(r"【会場】\s*([^\n]+)")
-TITLE = re.compile(r"【(?:題名|タイトル)】\s*([^\n]+)")
+EXCLUDE = re.compile(
+    r"トーク|配信|生放送|YouTube|インストア|"
+    r"特典会|サイン会|握手会|撮影会|"
+    r"リリースイベント|ラジオ",
+    re.I,
+)
+
+SKIP_TITLES = {
+    "ログイン", "フォロー", "NEWS", "ライブ",
+    "新しい記事", "過去の記事", "イベント",
+    "【タイトル】", "【題名】", "【日程】",
+    "【会場】", "【時間】", "【出演者】",
+}
 
 
-def _lines(soup):
-    for element in soup(["script", "style", "nav", "footer"]):
-        element.decompose()
+def get_lines(soup):
+    for tag in soup(["script", "style", "nav", "footer"]):
+        tag.decompose()
 
     return [
-        re.sub(r"\s+", " ", x).strip()
-        for x in soup.get_text("\n").splitlines()
-        if x.strip()
+        re.sub(r"\s+", " ", line).strip()
+        for line in soup.get_text("\n").splitlines()
+        if line.strip()
     ]
 
 
-def _first_match(pattern, text):
-    match = pattern.search(text)
-    return match.group(1).strip() if match else ""
-
-
-def _date_from(text, today):
+def extract_date(text, today):
     for match in DATE.finditer(text):
         try:
-            value = date(*map(int, match.groups()))
+            day = date(*map(int, match.groups()))
         except ValueError:
             continue
 
-        if value >= today:
-            return value
+        if day >= today:
+            return day
 
     return None
+
+
+def extract_title(lines, heading):
+    # 【題名】【タイトル】の直後を優先
+    for i, line in enumerate(lines):
+        for label in ("【題名】", "【タイトル】"):
+            if label in line:
+                value = line.split(label, 1)[1].strip()
+
+                if value and value not in SKIP_TITLES:
+                    return value
+
+                if i + 1 < len(lines):
+                    value = lines[i + 1].strip()
+                    if value and value not in SKIP_TITLES:
+                        return value
+
+    # 公演日の直前にある公演名を取得
+    # サイトのログイン・ナビゲーションは除外
+    for i, line in enumerate(lines):
+        if not DATE.search(line):
+            continue
+
+        if i == 0:
+            continue
+
+        previous = lines[i - 1].strip()
+
+        if (
+            previous
+            and previous not in SKIP_TITLES
+            and not DATE.search(previous)
+            and not previous.startswith("【出演決定")
+            and not previous.startswith("【開催決定")
+            and not previous.startswith("The Poraliscope")
+            and not re.match(r"^\d{4}/\d{1,2}/\d{1,2}", previous)
+            and len(previous) <= 150
+        ):
+            return previous
+
+    return heading
+
+
+def extract_venue(lines, heading):
+    for i, line in enumerate(lines):
+        if "【会場】" in line:
+            value = line.split("【会場】", 1)[1].strip()
+
+            if value:
+                return value
+
+            if i + 1 < len(lines):
+                return lines[i + 1].strip()
+
+    known_venues = (
+        "渋谷FOWS",
+        "下北沢ReG",
+        "下北沢LIVEHOLIC",
+    )
+
+    for venue in known_venues:
+        if venue in heading:
+            return venue
+
+    # 日付の直後に会場が書かれている形式
+    for i, line in enumerate(lines):
+        if DATE.search(line):
+            remainder = DATE.sub("", line).strip()
+
+            remainder = re.sub(
+                r"^[（(][月火水木金土日][）)]",
+                "",
+                remainder,
+            ).strip()
+
+            if remainder and len(remainder) < 80:
+                return remainder
+
+            if i + 1 < len(lines):
+                candidate = lines[i + 1].strip()
+
+                if (
+                    candidate
+                    and candidate not in SKIP_TITLES
+                    and len(candidate) < 80
+                    and not TIME.search(candidate)
+                ):
+                    return candidate
+
+    return ""
 
 
 def fetch_poraliscope(artist):
@@ -65,10 +157,9 @@ def fetch_poraliscope(artist):
     })
 
     today = datetime.now(TZ).date()
-
-    # NEWSの「ライブ」タグから記事を取得
     article_links = {}
 
+    # ライブカテゴリのNEWS記事を取得
     for page in range(1, 21):
         response = session.get(
             NEWS_URL,
@@ -86,10 +177,13 @@ def fetch_poraliscope(artist):
                 a.get("href", ""),
             ).split("?")[0]
 
-            match = re.search(r"/contents/(\d+)/?$", url)
+            if not re.search(r"/contents/\d+/?$", url):
+                continue
 
-            if match and url not in article_links:
-                article_links[url] = a.get_text(" ", strip=True)
+            if url not in article_links:
+                article_links[url] = a.get_text(
+                    " ", strip=True
+                )
                 added += 1
 
         if added == 0:
@@ -102,106 +196,54 @@ def fetch_poraliscope(artist):
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, "html.parser")
-        lines = _lines(soup)
-        full_text = "\n".join(lines)
+        lines = get_lines(soup)
+        text = "\n".join(lines)
 
-        heading = next(
-            (
-                x for x in lines
-                if "【出演決定" in x or "【開催決定" in x
-            ),
-            listing_title,
-        )
+        # 記事の見出し
+        heading = listing_title.split(" NEW ")[0].strip()
 
-        title_text = heading.split(" | ")[0]
+        if not heading:
+            heading = next(
+                (
+                    line.split(" | ")[0]
+                    for line in lines
+                    if "【出演決定" in line
+                    or "【開催決定" in line
+                ),
+                "",
+            )
 
-        if EXCLUDE.search(title_text):
+        if EXCLUDE.search(heading):
             continue
 
-        if not BAND.search(full_text):
-            continue
-
-        day = _date_from(title_text, today)
+        # 日付は記事タイトルを優先
+        day = extract_date(heading, today)
 
         if day is None:
-            day = _date_from(full_text, today)
+            day = extract_date(text, today)
 
         if day is None:
             continue
 
-        event_name = _first_match(TITLE, full_text)
+        title = extract_title(lines, heading)
 
-        if not event_name:
-            for i, line in enumerate(lines):
-                if DATE.search(line) and i > 0:
-                    previous = lines[i - 1]
-
-                    if (
-                        previous != title_text
-                        and len(previous) < 130
-                        and not DATE.search(previous)
-                    ):
-                        event_name = previous
-                        break
-
-        event_name = event_name or title_text or listing_title
-
-        if event_name in ("ログイン", "フォロー", "NEWS"):
-            event_name = ""
-
-        if not event_name:
-            for line in lines:
-                if "CLEAR FES 2026" in line:
-                    event_name = "CLEAR FES 2026"
-                    break
-                if "SOULBEAT" in line:
-                    event_name = "SOULBEAT"
-                    break
-
-        event_name = event_name or title_text or listing_title
-
-        if EXCLUDE.search(event_name):
+        if EXCLUDE.search(title):
             continue
 
-        venue = _first_match(VENUE, full_text)
+        if title in SKIP_TITLES:
+            title = heading
 
-        if not venue:
-            for i, line in enumerate(lines):
-                if DATE.search(line) and i + 1 < len(lines):
-                    next_line = lines[i + 1]
+        venue = extract_venue(lines, heading)
 
-                    if re.search(
-                        r"LIVEHOLIC|ReG|FOWS|HALL|"
-                        r"ホール|ライブハウス",
-                        next_line,
-                        re.I,
-                    ):
-                        venue = next_line
-                        break
+        match = TIME.search(text)
 
-        if not venue:
-            match = re.search(r"＠\s*([^\s]+)", title_text)
-
-            if match:
-                venue = match.group(1)
-            else:
-                match = re.search(
-                    r"(渋谷FOWS|下北沢ReG|下北沢LIVEHOLIC)",
-                    title_text,
-                )
-
-                if match:
-                    venue = match.group(1)
-
-        tm = TIME.search(full_text)
-
-        if tm:
+        if match:
             start = datetime(
                 day.year,
                 day.month,
                 day.day,
-                int(tm.group(1)),
-                int(tm.group(2)),
+                int(match.group(1)),
+                int(match.group(2)),
                 tzinfo=TZ,
             )
             end = start + timedelta(hours=3)
@@ -209,20 +251,25 @@ def fetch_poraliscope(artist):
             start = day
             end = day + timedelta(days=1)
 
-        event_id = re.search(
-            r"/contents/(\d+)",
-            url,
+        article_id = re.search(
+            r"/contents/(\d+)", url
         ).group(1)
 
         events.append({
-            "uid": f"poraliscope-{event_id}@live-calendar",
-            "title": f'【{artist["name"]}】{event_name}',
+            "uid": (
+                f"poraliscope-{article_id}"
+                "@live-calendar"
+            ),
+            "title": (
+                f'【{artist["name"]}】{title}'
+            ),
             "start": start,
             "end": end,
             "location": venue,
             "description": (
                 f"公式情報: {url}\n"
-                f'開演: {tm.group(0) if tm else "未掲載"}\n'
+                f"開演: "
+                f'{match.group(0) if match else "未掲載"}\n'
                 "終了時刻は仮設定"
             ),
             "url": url,
