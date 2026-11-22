@@ -254,6 +254,68 @@ def write_artist_calendar(
     )
 
 
+def read_event_blocks(path):
+    text = path.read_bytes().decode("utf-8")
+    blocks = []
+
+    for m in re.finditer(
+        r"BEGIN:VEVENT\r?\n(?:.*\r?\n)*?END:VEVENT",
+        text,
+    ):
+        block = (
+            m.group(0)
+            .replace("\r\n", "\n")
+            .replace("\n", "\r\n")
+        )
+        dt = re.search(
+            r"DTSTART[^:\r\n]*:(\d{8}(?:T\d{6})?)",
+            block,
+        )
+        blocks.append(
+            (dt.group(1) if dt else "", block)
+        )
+
+    return blocks
+
+
+def write_combined_calendar(artists):
+    blocks = []
+
+    for artist in artists:
+        if not artist.get("enabled", True):
+            continue
+
+        path = ROOT / "docs" / f'{artist["id"]}.ics'
+
+        if path.exists():
+            blocks.extend(read_event_blocks(path))
+
+    blocks.sort(key=lambda b: b[0])
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Personal Live Calendar//JP",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        f"X-WR-CALNAME:{esc('LIVE SCHEDULE')}",
+        "X-WR-TIMEZONE:Asia/Tokyo",
+    ]
+
+    body = "\r\n".join(lines) + "\r\n"
+    body += "".join(
+        block + "\r\n" for _, block in blocks
+    )
+    body += "END:VCALENDAR\r\n"
+
+    dest = ROOT / "docs" / "live.ics"
+    dest.write_bytes(body.encode("utf-8"))
+
+    print(
+        f"Generated {len(blocks)} events: {dest}"
+    )
+
+
 def main():
     artists = json.loads(
         (ROOT / "artists.json").read_text(
@@ -261,33 +323,41 @@ def main():
         )
     )
 
-    events = []
+    fetchers = {
+        "fanpla_schedule": fetch_fanpla,
+        "nightmare_schedule": fetch_nightmare,
+        "kizu_schedule": fetch_kizu,
+        "poraliscope_news": fetch_poraliscope,
+    }
+
+    succeeded = 0
+    failed = []
 
     for artist in artists:
         if not artist.get("enabled", True):
             continue
 
         source = artist["source"]
+        fetch = fetchers.get(source)
 
-        if source == "fanpla_schedule":
-            artist_events = fetch_fanpla(artist)
-
-        elif source == "nightmare_schedule":
-            artist_events = fetch_nightmare(artist)
-
-        elif source == "kizu_schedule":
-            artist_events = fetch_kizu(artist)
-
-        elif source == "poraliscope_news":
-            artist_events = fetch_poraliscope(artist)
-
-        else:
+        if fetch is None:
             raise ValueError(
                 f'Unsupported source for '
                 f'{artist["id"]}: {source}'
             )
 
-        events.extend(artist_events)
+        try:
+            artist_events = fetch(artist)
+        except Exception as e:
+            print(
+                f'WARNING: {artist["name"]} '
+                f'の取得に失敗したため、'
+                f'前回のデータを維持します: {e}'
+            )
+            failed.append(artist["name"])
+            continue
+
+        succeeded += 1
 
         write_artist_calendar(
             artist_events,
@@ -295,11 +365,18 @@ def main():
             artist["name"],
         )
 
-    write_calendar(
-        events,
-        "LIVE SCHEDULE",
-        ROOT / "docs" / "live.ics",
-    )
+    if succeeded == 0 and failed:
+        raise SystemExit(
+            "ERROR: 全アーティストの取得に失敗しました"
+        )
+
+    write_combined_calendar(artists)
+
+    if failed:
+        print(
+            "WARNING: 取得できなかったアーティスト: "
+            + ", ".join(failed)
+        )
 
 
 if __name__ == "__main__":
